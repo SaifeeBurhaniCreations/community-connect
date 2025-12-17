@@ -1,17 +1,16 @@
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
-import { useStore } from '@/store/useStore';
+import { useMembers, useAttendance, useGroupMembers, Member } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { 
   Edit, 
   Trash2, 
   Phone, 
   MapPin, 
-  Hash, 
   GraduationCap,
-  Calendar,
   CheckCircle,
   XCircle,
   TrendingUp
@@ -29,14 +28,86 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import { HouseColor } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
 export function MemberDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { getMember, deleteMember, getMemberAttendanceStats, getAttendanceForMember, occasions, groups } = useStore();
+  const { getMember, deleteMember } = useMembers();
+  const { getMemberAttendanceStats, getAttendanceForMember } = useAttendance();
+  const { getMemberGroups } = useGroupMembers();
 
-  const member = id ? getMember(id) : undefined;
+  const [member, setMember] = useState<Member | null>(null);
+  const [stats, setStats] = useState({ total: 0, attended: 0, percentage: 0 });
+  const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
+  const [memberGroups, setMemberGroups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) loadData();
+  }, [id]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [memberData, attendanceStats, attendance, groups] = await Promise.all([
+        getMember(id!),
+        getMemberAttendanceStats(id!),
+        getAttendanceForMember(id!),
+        getMemberGroups(id!),
+      ]);
+
+      setMember(memberData);
+      setStats(attendanceStats);
+      setRecentAttendance((attendance || []).slice(0, 5));
+      setMemberGroups(groups || []);
+    } catch (error) {
+      console.error('Error loading member:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toMemberFormat = (m: Member) => ({
+    ...m,
+    houseColor: m.house_color as HouseColor,
+    itsNumber: m.its_number,
+    mobileNumber: m.mobile_number,
+    profilePhoto: m.profile_photo,
+    isActive: m.is_active,
+    createdAt: m.created_at,
+  });
+
+  const handleDelete = async () => {
+    if (!member) return;
+    
+    try {
+      await deleteMember(member.id);
+      toast({
+        title: 'Member Deleted',
+        description: `${member.name} ${member.surname} has been removed.`,
+      });
+      navigate('/members');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete member.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout title="Member Details" showBack onBack={() => navigate('/members')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!member) {
     return (
@@ -47,29 +118,6 @@ export function MemberDetail() {
       </Layout>
     );
   }
-
-  const stats = getMemberAttendanceStats(member.id);
-  const memberAttendance = getAttendanceForMember(member.id);
-  const memberGroups = groups.filter(g => g.memberIds.includes(member.id));
-
-  // Get recent attendance with occasion details
-  const recentAttendance = memberAttendance
-    .map(a => ({
-      ...a,
-      occasion: occasions.find(o => o.id === a.occasionId)
-    }))
-    .filter(a => a.occasion)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 5);
-
-  const handleDelete = () => {
-    deleteMember(member.id);
-    toast({
-      title: 'Member Deleted',
-      description: `${member.name} ${member.surname} has been removed.`,
-    });
-    navigate('/members');
-  };
 
   return (
     <Layout
@@ -116,12 +164,12 @@ export function MemberDetail() {
           animate={{ opacity: 1, y: 0 }}
           className="card-elevated p-6 text-center"
         >
-          <Avatar member={member} size="xl" showHouse />
+          <Avatar member={toMemberFormat(member) as any} size="xl" showHouse />
           <h2 className="text-xl font-bold text-foreground mt-4">
             {member.name} {member.surname}
           </h2>
-          <p className="text-muted-foreground">ITS: {member.itsNumber}</p>
-          {!member.isActive && (
+          <p className="text-muted-foreground">ITS: {member.its_number}</p>
+          {!member.is_active && (
             <span className="inline-block mt-2 px-3 py-1 bg-destructive/10 text-destructive text-xs font-medium rounded-full">
               Inactive
             </span>
@@ -177,15 +225,15 @@ export function MemberDetail() {
             </div>
           </div>
 
-          {member.mobileNumber && (
+          {member.mobile_number && (
             <div className="card-elevated p-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <Phone className="w-5 h-5 text-accent" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Mobile</p>
-                <a href={`tel:${member.mobileNumber}`} className="font-medium text-foreground">
-                  {member.mobileNumber}
+                <a href={`tel:${member.mobile_number}`} className="font-medium text-foreground">
+                  {member.mobile_number}
                 </a>
               </div>
             </div>
@@ -214,13 +262,13 @@ export function MemberDetail() {
           >
             <h3 className="font-semibold text-foreground mb-3">Groups</h3>
             <div className="flex flex-wrap gap-2">
-              {memberGroups.map(group => (
+              {memberGroups.map((gm: any) => (
                 <span
-                  key={group.id}
-                  onClick={() => navigate(`/groups/${group.id}`)}
+                  key={gm.id}
+                  onClick={() => navigate(`/groups/${gm.groups?.id}`)}
                   className="px-3 py-1.5 bg-secondary rounded-full text-sm font-medium text-secondary-foreground cursor-pointer hover:bg-secondary/80 transition-colors"
                 >
-                  {group.name}
+                  {gm.groups?.name}
                 </span>
               ))}
             </div>
@@ -237,22 +285,22 @@ export function MemberDetail() {
           >
             <h3 className="font-semibold text-foreground mb-3">Recent Attendance</h3>
             <div className="space-y-2">
-              {recentAttendance.map(record => (
+              {recentAttendance.map((record: any) => (
                 <div
                   key={record.id}
                   className="flex items-center gap-3 p-2 rounded-lg bg-secondary/30"
                 >
-                  {record.isPresent ? (
+                  {record.is_present ? (
                     <CheckCircle className="w-5 h-5 text-success shrink-0" />
                   ) : (
                     <XCircle className="w-5 h-5 text-destructive shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">
-                      {record.occasion?.title}
+                      {record.occasions?.title}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {record.occasion?.date}
+                      {record.occasions?.date}
                     </p>
                   </div>
                 </div>

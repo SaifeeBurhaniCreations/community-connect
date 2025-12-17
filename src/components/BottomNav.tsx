@@ -19,6 +19,9 @@ const navItems = [
 export function BottomNav() {
   const location = useLocation();
 
+  // Don't show on auth page
+  if (location.pathname === '/auth') return null;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 glass border-t border-border/50 safe-bottom">
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
