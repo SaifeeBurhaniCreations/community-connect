@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useStore } from '@/store/useStore';
+import { useAuth } from '@/hooks/useAuth';
+import { useAnalytics, useMembers, useOccasions, useAttendance } from '@/hooks/useDatabase';
 import { Avatar } from '@/components/Avatar';
 import { 
   Users, 
@@ -10,7 +12,8 @@ import {
   UserCheck,
   UserX,
   ChevronRight,
-  Plus
+  Plus,
+  BarChart3
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -23,55 +26,82 @@ import {
   YAxis,
   Tooltip
 } from 'recharts';
+import { BottomNav } from '@/components/BottomNav';
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { members, groups, occasions, attendance } = useStore();
+  const { user } = useAuth();
+  const { getDashboardStats, getGroupPerformance, getAttendanceTrends } = useAnalytics();
+  const { getMembers } = useMembers();
+  const { getOccasions } = useOccasions();
+  const { getAttendanceForOccasion } = useAttendance();
 
-  const activeMembers = members.filter(m => m.isActive).length;
-  const totalOccasions = occasions.length;
-  
-  // Calculate attendance stats
-  const lastOccasion = occasions.sort((a, b) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  )[0];
-  
-  const lastOccasionAttendance = lastOccasion 
-    ? attendance.filter(a => a.occasionId === lastOccasion.id)
-    : [];
-  const presentCount = lastOccasionAttendance.filter(a => a.isPresent).length;
-  const absentCount = lastOccasionAttendance.filter(a => !a.isPresent).length;
-  const attendanceRate = lastOccasionAttendance.length > 0 
-    ? Math.round((presentCount / lastOccasionAttendance.length) * 100) 
+  const [stats, setStats] = useState({ totalMembers: 0, totalGroups: 0, totalOccasions: 0 });
+  const [recentMembers, setRecentMembers] = useState<any[]>([]);
+  const [lastOccasion, setLastOccasion] = useState<any>(null);
+  const [lastOccasionAttendance, setLastOccasionAttendance] = useState<{ present: number; absent: number }>({ present: 0, absent: 0 });
+  const [groupPerformance, setGroupPerformance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      const [dashStats, members, occasions, performance] = await Promise.all([
+        getDashboardStats(),
+        getMembers(),
+        getOccasions(),
+        getGroupPerformance(),
+      ]);
+
+      setStats(dashStats);
+      setRecentMembers((members || []).slice(0, 5));
+      setGroupPerformance(performance.slice(0, 5));
+
+      // Get last occasion and its attendance
+      if (occasions && occasions.length > 0) {
+        const last = occasions[0];
+        setLastOccasion(last);
+        
+        const attendance = await getAttendanceForOccasion(last.id);
+        const present = attendance?.filter(a => a.is_present).length || 0;
+        const absent = attendance?.filter(a => !a.is_present).length || 0;
+        setLastOccasionAttendance({ present, absent });
+      }
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const attendanceRate = lastOccasionAttendance.present + lastOccasionAttendance.absent > 0
+    ? Math.round((lastOccasionAttendance.present / (lastOccasionAttendance.present + lastOccasionAttendance.absent)) * 100)
     : 0;
 
   const pieData = [
-    { name: 'Present', value: presentCount || 1, color: 'hsl(142, 76%, 36%)' },
-    { name: 'Absent', value: absentCount || 1, color: 'hsl(0, 84%, 60%)' },
+    { name: 'Present', value: lastOccasionAttendance.present || 1, color: 'hsl(142, 76%, 36%)' },
+    { name: 'Absent', value: lastOccasionAttendance.absent || 1, color: 'hsl(0, 84%, 60%)' },
   ];
 
-  // Group attendance data
-  const groupAttendance = groups.map(group => {
-    const groupMemberIds = new Set(group.memberIds);
-    const groupAttendanceRecords = attendance.filter(a => groupMemberIds.has(a.memberId));
-    const present = groupAttendanceRecords.filter(a => a.isPresent).length;
-    const total = groupAttendanceRecords.length;
-    return {
-      name: group.name.length > 8 ? group.name.slice(0, 8) + '...' : group.name,
-      attendance: total > 0 ? Math.round((present / total) * 100) : 0
-    };
-  }).slice(0, 5);
-
-  const stats = [
-    { label: 'Members', value: activeMembers, icon: Users, color: 'bg-primary/10 text-primary' },
-    { label: 'Groups', value: groups.length, icon: FolderOpen, color: 'bg-accent/10 text-accent' },
-    { label: 'Occasions', value: totalOccasions, icon: Calendar, color: 'bg-info/10 text-info' },
+  const statCards = [
+    { label: 'Members', value: stats.totalMembers, icon: Users, color: 'bg-primary/10 text-primary' },
+    { label: 'Groups', value: stats.totalGroups, icon: FolderOpen, color: 'bg-accent/10 text-accent' },
+    { label: 'Occasions', value: stats.totalOccasions, icon: Calendar, color: 'bg-info/10 text-info' },
     { label: 'Attendance', value: `${attendanceRate}%`, icon: TrendingUp, color: 'bg-success/10 text-success' },
   ];
 
-  const recentMembers = [...members]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -95,7 +125,7 @@ export function Dashboard() {
           transition={{ duration: 0.3, delay: 0.1 }}
           className="grid grid-cols-2 gap-3"
         >
-          {stats.map((stat, index) => (
+          {statCards.map((stat, index) => (
             <motion.div
               key={stat.label}
               initial={{ opacity: 0, scale: 0.9 }}
@@ -115,6 +145,24 @@ export function Dashboard() {
 
       {/* Charts Section */}
       <div className="px-4 mt-6 space-y-4">
+        {/* Quick Actions */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.15 }}
+          className="flex gap-3"
+        >
+          <button
+            onClick={() => navigate('/analytics')}
+            className="flex-1 card-elevated p-4 flex items-center gap-3 active:scale-[0.98] transition-transform"
+          >
+            <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-accent" />
+            </div>
+            <span className="font-medium text-foreground">View Analytics</span>
+          </button>
+        </motion.div>
+
         {/* Attendance Chart */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -152,19 +200,19 @@ export function Dashboard() {
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-success" />
                 <span className="text-sm text-muted-foreground">Present</span>
-                <span className="ml-auto font-semibold text-foreground">{presentCount}</span>
+                <span className="ml-auto font-semibold text-foreground">{lastOccasionAttendance.present}</span>
               </div>
               <div className="flex items-center gap-2">
                 <UserX className="w-4 h-4 text-destructive" />
                 <span className="text-sm text-muted-foreground">Absent</span>
-                <span className="ml-auto font-semibold text-foreground">{absentCount}</span>
+                <span className="ml-auto font-semibold text-foreground">{lastOccasionAttendance.absent}</span>
               </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Group Attendance */}
-        {groupAttendance.length > 0 && (
+        {/* Group Performance */}
+        {groupPerformance.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -174,7 +222,7 @@ export function Dashboard() {
             <h2 className="font-semibold text-foreground mb-4">Group Performance</h2>
             <div className="h-40">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={groupAttendance} layout="vertical">
+                <BarChart data={groupPerformance.map(g => ({ name: g.name.slice(0, 8), attendance: g.attendance }))} layout="vertical">
                   <XAxis type="number" domain={[0, 100]} hide />
                   <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 12 }} />
                   <Tooltip 
@@ -216,7 +264,7 @@ export function Dashboard() {
                   onClick={() => navigate(`/members/${member.id}`)}
                   className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-secondary/50 cursor-pointer transition-colors"
                 >
-                  <Avatar member={member} size="sm" />
+                  <Avatar member={member as any} size="sm" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-foreground truncate">
                       {member.name} {member.surname}
@@ -240,6 +288,8 @@ export function Dashboard() {
           )}
         </motion.div>
       </div>
+
+      <BottomNav />
     </div>
   );
 }

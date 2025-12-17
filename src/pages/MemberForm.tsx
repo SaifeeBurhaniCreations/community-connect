@@ -1,46 +1,85 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
-import { useStore } from '@/store/useStore';
+import { useMembers, Member } from '@/hooks/useDatabase';
+import { uploadToS3 } from '@/lib/s3Upload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { HouseColor, Member, HOUSE_COLORS, GRADES, CLASSES } from '@/types';
+import { HouseColor, HOUSE_COLORS, GRADES, CLASSES } from '@/types';
 import { Camera, Loader2 } from 'lucide-react';
 
 export function MemberForm() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { members, addMember, updateMember, getMember } = useStore();
+  const { getMembers, getMember, createMember, updateMember } = useMembers();
   
-  const existingMember = id ? getMember(id) : undefined;
-  const isEditing = !!existingMember;
+  const [existingMember, setExistingMember] = useState<Member | null>(null);
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const isEditing = !!id;
 
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [form, setForm] = useState({
-    name: existingMember?.name || '',
-    surname: existingMember?.surname || '',
-    houseColor: existingMember?.houseColor || 'red' as HouseColor,
-    address: existingMember?.address || '',
-    itsNumber: existingMember?.itsNumber || '',
-    mobileNumber: existingMember?.mobileNumber || '',
-    grade: existingMember?.grade || '1',
-    class: existingMember?.class || 'A',
-    profilePhoto: existingMember?.profilePhoto || '',
-    isActive: existingMember?.isActive ?? true,
+    name: '',
+    surname: '',
+    house_color: 'red' as HouseColor,
+    address: '',
+    its_number: '',
+    mobile_number: '',
+    grade: '1',
+    class: 'A',
+    profile_photo: '',
+    is_active: true,
   });
+
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
+  const loadData = async () => {
+    try {
+      setPageLoading(true);
+      const members = await getMembers();
+      setAllMembers(members || []);
+      
+      if (id) {
+        const member = await getMember(id);
+        if (member) {
+          setExistingMember(member);
+          setForm({
+            name: member.name,
+            surname: member.surname,
+            house_color: member.house_color as HouseColor,
+            address: member.address || '',
+            its_number: member.its_number,
+            mobile_number: member.mobile_number || '',
+            grade: member.grade,
+            class: member.class,
+            profile_photo: member.profile_photo || '',
+            is_active: member.is_active,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setPageLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     // Validate ITS number uniqueness
-    const duplicateIts = members.find(
-      m => m.itsNumber === form.itsNumber && m.id !== id
+    const duplicateIts = allMembers.find(
+      m => m.its_number === form.its_number && m.id !== id
     );
     if (duplicateIts) {
       toast({
@@ -53,7 +92,7 @@ export function MemberForm() {
     }
 
     // Validate required fields
-    if (!form.name || !form.surname || !form.itsNumber) {
+    if (!form.name || !form.surname || !form.its_number) {
       toast({
         title: 'Missing Fields',
         description: 'Please fill in all required fields.',
@@ -64,24 +103,24 @@ export function MemberForm() {
     }
 
     try {
-      if (isEditing) {
-        updateMember(id!, form);
+      if (isEditing && id) {
+        await updateMember(id, form);
         toast({
           title: 'Member Updated',
           description: `${form.name} ${form.surname} has been updated.`,
         });
       } else {
-        addMember(form);
+        await createMember(form);
         toast({
           title: 'Member Added',
           description: `${form.name} ${form.surname} has been added.`,
         });
       }
       navigate('/members');
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        description: error.message || 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -89,16 +128,38 @@ export function MemberForm() {
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setForm(prev => ({ ...prev, profilePhoto: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    try {
+      const publicUrl = await uploadToS3(file);
+      setForm(prev => ({ ...prev, profile_photo: publicUrl }));
+      toast({
+        title: 'Photo Uploaded',
+        description: 'Profile photo has been uploaded successfully.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Upload Failed',
+        description: error.message || 'Failed to upload photo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingPhoto(false);
     }
   };
+
+  if (pageLoading) {
+    return (
+      <Layout title={isEditing ? 'Edit Member' : 'Add Member'} showBack onBack={() => navigate('/members')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout
@@ -115,20 +176,29 @@ export function MemberForm() {
               accept="image/*"
               onChange={handlePhotoUpload}
               className="hidden"
+              disabled={uploadingPhoto}
             />
-            {form.profilePhoto ? (
+            {form.profile_photo ? (
               <img
-                src={form.profilePhoto}
+                src={form.profile_photo}
                 alt="Profile"
                 className="w-24 h-24 rounded-full object-cover ring-4 ring-border"
               />
             ) : (
               <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center ring-4 ring-border">
-                <Camera className="w-8 h-8 text-muted-foreground" />
+                {uploadingPhoto ? (
+                  <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
+                ) : (
+                  <Camera className="w-8 h-8 text-muted-foreground" />
+                )}
               </div>
             )}
             <div className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-              <Camera className="w-4 h-4 text-primary-foreground" />
+              {uploadingPhoto ? (
+                <Loader2 className="w-4 h-4 text-primary-foreground animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4 text-primary-foreground" />
+              )}
             </div>
           </label>
         </div>
@@ -159,11 +229,11 @@ export function MemberForm() {
 
         {/* ITS Number */}
         <div className="space-y-2">
-          <Label htmlFor="itsNumber">ITS Number *</Label>
+          <Label htmlFor="its_number">ITS Number *</Label>
           <Input
-            id="itsNumber"
-            value={form.itsNumber}
-            onChange={(e) => setForm(prev => ({ ...prev, itsNumber: e.target.value }))}
+            id="its_number"
+            value={form.its_number}
+            onChange={(e) => setForm(prev => ({ ...prev, its_number: e.target.value }))}
             placeholder="Enter ITS number"
             required
           />
@@ -177,9 +247,9 @@ export function MemberForm() {
               <button
                 key={value}
                 type="button"
-                onClick={() => setForm(prev => ({ ...prev, houseColor: value }))}
+                onClick={() => setForm(prev => ({ ...prev, house_color: value }))}
                 className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                  form.houseColor === value
+                  form.house_color === value
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-primary/50'
                 }`}
@@ -233,12 +303,12 @@ export function MemberForm() {
 
         {/* Mobile Number */}
         <div className="space-y-2">
-          <Label htmlFor="mobileNumber">Mobile Number</Label>
+          <Label htmlFor="mobile_number">Mobile Number</Label>
           <Input
-            id="mobileNumber"
+            id="mobile_number"
             type="tel"
-            value={form.mobileNumber}
-            onChange={(e) => setForm(prev => ({ ...prev, mobileNumber: e.target.value }))}
+            value={form.mobile_number}
+            onChange={(e) => setForm(prev => ({ ...prev, mobile_number: e.target.value }))}
             placeholder="Enter mobile number"
           />
         </div>
@@ -257,22 +327,22 @@ export function MemberForm() {
         {/* Active Status */}
         <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/50">
           <div>
-            <Label htmlFor="isActive" className="text-base">Active Member</Label>
+            <Label htmlFor="is_active" className="text-base">Active Member</Label>
             <p className="text-sm text-muted-foreground">
               Inactive members won't appear in attendance
             </p>
           </div>
           <Switch
-            id="isActive"
-            checked={form.isActive}
-            onCheckedChange={(checked) => setForm(prev => ({ ...prev, isActive: checked }))}
+            id="is_active"
+            checked={form.is_active}
+            onCheckedChange={(checked) => setForm(prev => ({ ...prev, is_active: checked }))}
           />
         </div>
 
         {/* Submit Button */}
         <Button
           type="submit"
-          disabled={loading}
+          disabled={loading || uploadingPhoto}
           className="w-full h-12 text-base"
         >
           {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

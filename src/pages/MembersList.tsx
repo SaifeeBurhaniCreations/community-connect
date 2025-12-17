@@ -1,34 +1,74 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
-import { useStore } from '@/store/useStore';
+import { useMembers, Member } from '@/hooks/useDatabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, Plus, Filter, UserX } from 'lucide-react';
-import { HouseColor, HOUSE_COLORS } from '@/types';
+import { HOUSE_COLORS, HouseColor } from '@/types';
 
 export function MembersList() {
   const navigate = useNavigate();
-  const { members } = useStore();
+  const { getMembers } = useMembers();
+  
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterHouse, setFilterHouse] = useState<HouseColor | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
+  useEffect(() => {
+    loadMembers();
+  }, []);
+
+  const loadMembers = async () => {
+    try {
+      setLoading(true);
+      const data = await getMembers();
+      setMembers(data || []);
+    } catch (error) {
+      console.error('Error loading members:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredMembers = useMemo(() => {
     return members
-      .filter(m => m.isActive)
+      .filter(m => m.is_active)
       .filter(m => {
         const matchesSearch = 
           m.name.toLowerCase().includes(search.toLowerCase()) ||
           m.surname.toLowerCase().includes(search.toLowerCase()) ||
-          m.itsNumber.includes(search);
-        const matchesHouse = filterHouse === 'all' || m.houseColor === filterHouse;
+          m.its_number.includes(search);
+        const matchesHouse = filterHouse === 'all' || m.house_color === filterHouse;
         return matchesSearch && matchesHouse;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [members, search, filterHouse]);
+
+  // Convert database member to component format
+  const toMemberFormat = (m: Member) => ({
+    ...m,
+    houseColor: m.house_color as HouseColor,
+    itsNumber: m.its_number,
+    mobileNumber: m.mobile_number,
+    profilePhoto: m.profile_photo,
+    isActive: m.is_active,
+    createdAt: m.created_at,
+  });
+
+  if (loading) {
+    return (
+      <Layout title="Members">
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout
@@ -121,13 +161,13 @@ export function MembersList() {
                 onClick={() => navigate(`/members/${member.id}`)}
                 className="card-elevated p-4 flex items-center gap-4 cursor-pointer active:scale-[0.98] transition-transform"
               >
-                <Avatar member={member} size="lg" />
+                <Avatar member={toMemberFormat(member) as any} size="lg" />
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-foreground truncate">
                     {member.name} {member.surname}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    ITS: {member.itsNumber}
+                    ITS: {member.its_number}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Grade {member.grade} • Class {member.class}
