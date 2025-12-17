@@ -14,7 +14,267 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attendance: {
+        Row: {
+          id: string
+          is_present: boolean
+          marked_at: string
+          member_id: string
+          occasion_id: string
+        }
+        Insert: {
+          id?: string
+          is_present?: boolean
+          marked_at?: string
+          member_id: string
+          occasion_id: string
+        }
+        Update: {
+          id?: string
+          is_present?: boolean
+          marked_at?: string
+          member_id?: string
+          occasion_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_occasion_id_fkey"
+            columns: ["occasion_id"]
+            isOneToOne: false
+            referencedRelation: "occasions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          member_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          member_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      kalam_assignments: {
+        Row: {
+          created_at: string
+          group_id: string | null
+          id: string
+          kalam_name: string | null
+          kalam_type: string
+          occasion_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          kalam_name?: string | null
+          kalam_type: string
+          occasion_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          kalam_name?: string | null
+          kalam_type?: string
+          occasion_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kalam_assignments_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kalam_assignments_occasion_id_fkey"
+            columns: ["occasion_id"]
+            isOneToOne: false
+            referencedRelation: "occasions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      members: {
+        Row: {
+          address: string | null
+          class: string
+          created_at: string
+          grade: string
+          house_color: string
+          id: string
+          is_active: boolean
+          its_number: string
+          mobile_number: string | null
+          name: string
+          profile_photo: string | null
+          surname: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          class: string
+          created_at?: string
+          grade: string
+          house_color: string
+          id?: string
+          is_active?: boolean
+          its_number: string
+          mobile_number?: string | null
+          name: string
+          profile_photo?: string | null
+          surname: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          class?: string
+          created_at?: string
+          grade?: string
+          house_color?: string
+          id?: string
+          is_active?: boolean
+          its_number?: string
+          mobile_number?: string | null
+          name?: string
+          profile_photo?: string | null
+          surname?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      occasions: {
+        Row: {
+          created_at: string
+          date: string
+          end_time: string
+          id: string
+          notes: string | null
+          place: string
+          start_time: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          end_time: string
+          id?: string
+          notes?: string | null
+          place: string
+          start_time: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          end_time?: string
+          id?: string
+          notes?: string | null
+          place?: string
+          start_time?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
