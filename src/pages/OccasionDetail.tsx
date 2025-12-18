@@ -1,7 +1,8 @@
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
-import { useStore } from '@/store/useStore';
+import { useOccasions, useGroups, useAttendance, Occasion, Group } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { 
   Edit, 
@@ -31,9 +32,65 @@ export function OccasionDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { getOccasion, deleteOccasion, getGroup, getAttendanceForOccasion } = useStore();
+  const { getOccasion, deleteOccasion } = useOccasions();
+  const { getGroups } = useGroups();
+  const { getAttendanceForOccasion } = useAttendance();
 
-  const occasion = id ? getOccasion(id) : undefined;
+  const [occasion, setOccasion] = useState<any>(null);
+  const [groups, setGroupsState] = useState<Group[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
+  const loadData = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const [occasionData, groupsData, attendanceData] = await Promise.all([
+        getOccasion(id),
+        getGroups(),
+        getAttendanceForOccasion(id),
+      ]);
+      setOccasion(occasionData);
+      setGroupsState(groupsData || []);
+      setAttendance(attendanceData || []);
+    } catch (error) {
+      console.error('Error loading occasion:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!occasion) return;
+    try {
+      await deleteOccasion(occasion.id);
+      toast({
+        title: 'Occasion Deleted',
+        description: `${occasion.title} has been removed.`,
+      });
+      navigate('/occasions');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete occasion.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout title="Occasion Details" showBack onBack={() => navigate('/occasions')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!occasion) {
     return (
@@ -45,17 +102,10 @@ export function OccasionDetail() {
     );
   }
 
-  const attendance = getAttendanceForOccasion(occasion.id);
-  const presentCount = attendance.filter(a => a.isPresent).length;
+  const presentCount = attendance.filter(a => a.is_present).length;
+  const kalamAssignments = occasion.kalam_assignments || [];
 
-  const handleDelete = () => {
-    deleteOccasion(occasion.id);
-    toast({
-      title: 'Occasion Deleted',
-      description: `${occasion.title} has been removed.`,
-    });
-    navigate('/occasions');
-  };
+  const getGroup = (groupId: string) => groups.find(g => g.id === groupId);
 
   return (
     <Layout
@@ -111,7 +161,7 @@ export function OccasionDetail() {
             </div>
             <div className="flex items-center gap-3 text-muted-foreground">
               <Clock className="w-4 h-4" />
-              <span>{occasion.startTime} - {occasion.endTime}</span>
+              <span>{occasion.start_time} - {occasion.end_time}</span>
             </div>
             <div className="flex items-center gap-3 text-muted-foreground">
               <MapPin className="w-4 h-4" />
@@ -155,13 +205,13 @@ export function OccasionDetail() {
         >
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <Music className="w-4 h-4 text-primary" />
-            Kalam List ({occasion.kalamAssignments.length})
+            Kalam List ({kalamAssignments.length})
           </h3>
           
-          {occasion.kalamAssignments.length > 0 ? (
+          {kalamAssignments.length > 0 ? (
             <div className="space-y-2">
-              {occasion.kalamAssignments.map((kalam, index) => {
-                const group = getGroup(kalam.groupId);
+              {kalamAssignments.map((kalam: any, index: number) => {
+                const group = getGroup(kalam.group_id);
                 return (
                   <motion.div
                     key={kalam.id}
@@ -176,10 +226,10 @@ export function OccasionDetail() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="inline-block px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full mb-1">
-                          {kalam.kalamType}
+                          {kalam.kalam_type}
                         </span>
                         <h4 className="font-medium text-foreground truncate">
-                          {kalam.kalamName || 'Untitled Kalam'}
+                          {kalam.kalam_name || 'Untitled Kalam'}
                         </h4>
                         {group && (
                           <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">

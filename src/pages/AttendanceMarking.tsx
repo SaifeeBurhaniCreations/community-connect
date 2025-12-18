@@ -1,36 +1,70 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
-import { useStore } from '@/store/useStore';
-import { Button } from '@/components/ui/button';
+import { useOccasions, useMembers, useGroups, useGroupMembers, useAttendance, Member, Group } from '@/hooks/useDatabase';
 import { Input } from '@/components/ui/input';
 import { Search, Check, X, Users } from 'lucide-react';
 
 export function AttendanceMarking() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { 
-    getOccasion, 
-    members, 
-    groups, 
-    attendance, 
-    markAttendance,
-    getAttendanceForOccasion 
-  } = useStore();
+  const { getOccasion } = useOccasions();
+  const { getMembers } = useMembers();
+  const { getGroups } = useGroups();
+  const { getGroupMembers } = useGroupMembers();
+  const { getAttendanceForOccasion, markAttendance } = useAttendance();
 
+  const [occasion, setOccasion] = useState<any>(null);
+  const [members, setMembersState] = useState<Member[]>([]);
+  const [groups, setGroupsState] = useState<Group[]>([]);
+  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, string[]>>({});
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   const [search, setSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string | 'all'>('all');
 
-  const occasion = id ? getOccasion(id) : undefined;
-  const occasionAttendance = id ? getAttendanceForOccasion(id) : [];
+  useEffect(() => {
+    loadData();
+  }, [id]);
 
-  const activeMembers = members.filter(m => m.isActive);
+  const loadData = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const [occasionData, membersData, groupsData, attendanceData] = await Promise.all([
+        getOccasion(id),
+        getMembers(),
+        getGroups(),
+        getAttendanceForOccasion(id),
+      ]);
+      
+      setOccasion(occasionData);
+      setMembersState(membersData || []);
+      setGroupsState(groupsData || []);
+      setAttendance(attendanceData || []);
+
+      // Load group members
+      const gmMap: Record<string, string[]> = {};
+      for (const group of (groupsData || [])) {
+        const gm = await getGroupMembers(group.id);
+        gmMap[group.id] = (gm || []).map(m => m.member_id);
+      }
+      setGroupMembersMap(gmMap);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const activeMembers = members.filter(m => m.is_active);
 
   // Get groups that have members assigned to this occasion's kalam
   const relevantGroupIds = new Set(
-    occasion?.kalamAssignments.map(k => k.groupId).filter(Boolean) || []
+    occasion?.kalam_assignments?.map((k: any) => k.group_id).filter(Boolean) || []
   );
   const relevantGroups = groups.filter(g => relevantGroupIds.has(g.id));
 
@@ -48,14 +82,12 @@ export function AttendanceMarking() {
 
     // Filter by group
     if (selectedGroup !== 'all') {
-      const group = groups.find(g => g.id === selectedGroup);
-      if (group) {
-        filtered = filtered.filter(m => group.memberIds.includes(m.id));
-      }
+      const groupMemberIds = groupMembersMap[selectedGroup] || [];
+      filtered = filtered.filter(m => groupMemberIds.includes(m.id));
     }
 
     return filtered.sort((a, b) => a.name.localeCompare(b.name));
-  }, [activeMembers, search, selectedGroup, groups]);
+  }, [activeMembers, search, selectedGroup, groupMembersMap]);
 
   // Group members by their groups for display
   const membersByGroup = useMemo(() => {
@@ -67,7 +99,8 @@ export function AttendanceMarking() {
     
     // First, add members to their respective relevant groups
     relevantGroups.forEach(group => {
-      const groupMembers = filteredMembers.filter(m => group.memberIds.includes(m.id));
+      const groupMemberIds = groupMembersMap[group.id] || [];
+      const groupMembers = filteredMembers.filter(m => groupMemberIds.includes(m.id));
       if (groupMembers.length > 0) {
         grouped[group.id] = groupMembers;
       }
@@ -83,7 +116,17 @@ export function AttendanceMarking() {
     }
 
     return grouped;
-  }, [filteredMembers, selectedGroup, relevantGroups]);
+  }, [filteredMembers, selectedGroup, relevantGroups, groupMembersMap]);
+
+  if (loading) {
+    return (
+      <Layout title="Mark Attendance" showBack onBack={() => navigate('/occasions')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!occasion) {
     return (
@@ -96,17 +139,31 @@ export function AttendanceMarking() {
   }
 
   const getAttendanceStatus = (memberId: string) => {
-    const record = occasionAttendance.find(a => a.memberId === memberId);
-    return record?.isPresent;
+    const record = attendance.find(a => a.member_id === memberId);
+    return record?.is_present;
   };
 
-  const handleToggle = (memberId: string) => {
+  const handleToggle = async (memberId: string) => {
     const currentStatus = getAttendanceStatus(memberId);
-    markAttendance(memberId, occasion.id, currentStatus !== true);
+    const newStatus = currentStatus !== true;
+    
+    try {
+      await markAttendance(memberId, occasion.id, newStatus);
+      // Update local state
+      setAttendance(prev => {
+        const existing = prev.find(a => a.member_id === memberId);
+        if (existing) {
+          return prev.map(a => a.member_id === memberId ? { ...a, is_present: newStatus } : a);
+        }
+        return [...prev, { member_id: memberId, occasion_id: occasion.id, is_present: newStatus }];
+      });
+    } catch (error) {
+      console.error('Error marking attendance:', error);
+    }
   };
 
-  const presentCount = occasionAttendance.filter(a => a.isPresent).length;
-  const totalMarked = occasionAttendance.length;
+  const presentCount = attendance.filter(a => a.is_present).length;
+  const totalMarked = attendance.length;
 
   return (
     <Layout

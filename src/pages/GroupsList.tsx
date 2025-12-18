@@ -1,13 +1,64 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
-import { useStore } from '@/store/useStore';
+import { useGroups, useGroupMembers, Group, Member } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { Plus, Users, FolderOpen } from 'lucide-react';
 
 export function GroupsList() {
   const navigate = useNavigate();
-  const { groups, members } = useStore();
+  const { getGroups } = useGroups();
+  const { getGroupMembers } = useGroupMembers();
+  
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, any[]>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const groupsData = await getGroups();
+      setGroups(groupsData || []);
+
+      // Load members for each group
+      const membersMap: Record<string, any[]> = {};
+      for (const group of (groupsData || [])) {
+        const members = await getGroupMembers(group.id);
+        membersMap[group.id] = members || [];
+      }
+      setGroupMembersMap(membersMap);
+    } catch (error) {
+      console.error('Error loading groups:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout
+        title="Groups"
+        rightAction={
+          <Button
+            onClick={() => navigate('/groups/new')}
+            size="icon"
+            className="bg-primary text-primary-foreground rounded-full w-10 h-10"
+          >
+            <Plus className="w-5 h-5" />
+          </Button>
+        }
+      >
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout
@@ -30,7 +81,7 @@ export function GroupsList() {
         {groups.length > 0 ? (
           <div className="space-y-3">
             {groups.map((group, index) => {
-              const groupMembers = members.filter(m => group.memberIds.includes(m.id));
+              const groupMembers = groupMembersMap[group.id] || [];
               
               return (
                 <motion.div
@@ -62,14 +113,20 @@ export function GroupsList() {
                   {/* Member Avatars */}
                   {groupMembers.length > 0 && (
                     <div className="flex -space-x-2 mt-3 pl-16">
-                      {groupMembers.slice(0, 5).map((member) => (
-                        <div
-                          key={member.id}
-                          className="w-8 h-8 rounded-full bg-secondary border-2 border-card flex items-center justify-center text-xs font-medium"
-                        >
-                          {member.name[0]}{member.surname[0]}
-                        </div>
-                      ))}
+                      {groupMembers.slice(0, 5).map((gm) => {
+                        const member = gm.members;
+                        if (!member) return null;
+                        const name = member.name || '';
+                        const surname = member.surname || '';
+                        return (
+                          <div
+                            key={gm.id}
+                            className="w-8 h-8 rounded-full bg-secondary border-2 border-card flex items-center justify-center text-xs font-medium"
+                          >
+                            {name[0] || ''}{surname[0] || ''}
+                          </div>
+                        );
+                      })}
                       {groupMembers.length > 5 && (
                         <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-card flex items-center justify-center text-xs font-medium">
                           +{groupMembers.length - 5}
