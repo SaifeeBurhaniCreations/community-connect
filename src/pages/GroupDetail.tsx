@@ -1,8 +1,9 @@
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
-import { useStore } from '@/store/useStore';
+import { useGroups, useGroupMembers, Group, Member } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { Edit, Trash2, Users, FolderOpen } from 'lucide-react';
 import {
@@ -22,9 +23,62 @@ export function GroupDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { getGroup, deleteGroup, members } = useStore();
+  const { getGroup, deleteGroup } = useGroups();
+  const { getGroupMembers } = useGroupMembers();
 
-  const group = id ? getGroup(id) : undefined;
+  const [group, setGroup] = useState<Group | null>(null);
+  const [groupMembers, setGroupMembersState] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
+  const loadData = async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      const groupData = await getGroup(id);
+      setGroup(groupData);
+
+      if (groupData) {
+        const members = await getGroupMembers(id);
+        setGroupMembersState(members || []);
+      }
+    } catch (error) {
+      console.error('Error loading group:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!group) return;
+    try {
+      await deleteGroup(group.id);
+      toast({
+        title: 'Group Deleted',
+        description: `${group.name} has been removed.`,
+      });
+      navigate('/groups');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete group.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout title="Group Details" showBack onBack={() => navigate('/groups')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!group) {
     return (
@@ -35,17 +89,6 @@ export function GroupDetail() {
       </Layout>
     );
   }
-
-  const groupMembers = members.filter(m => group.memberIds.includes(m.id));
-
-  const handleDelete = () => {
-    deleteGroup(group.id);
-    toast({
-      title: 'Group Deleted',
-      description: `${group.name} has been removed.`,
-    });
-    navigate('/groups');
-  };
 
   return (
     <Layout
@@ -119,26 +162,30 @@ export function GroupDetail() {
           <h3 className="font-semibold text-foreground">Members</h3>
           {groupMembers.length > 0 ? (
             <div className="space-y-2">
-              {groupMembers.map((member, index) => (
-                <motion.div
-                  key={member.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.1 + index * 0.03 }}
-                  onClick={() => navigate(`/members/${member.id}`)}
-                  className="card-elevated p-3 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform"
-                >
-                  <Avatar member={member} size="md" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground truncate">
-                      {member.name} {member.surname}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Grade {member.grade} • Class {member.class}
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
+              {groupMembers.map((gm, index) => {
+                const member = gm.members;
+                if (!member) return null;
+                return (
+                  <motion.div
+                    key={gm.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 + index * 0.03 }}
+                    onClick={() => navigate(`/members/${member.id}`)}
+                    className="card-elevated p-3 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform"
+                  >
+                    <Avatar member={member} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-foreground truncate">
+                        {member.name} {member.surname}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Grade {member.grade}
+                      </p>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8">

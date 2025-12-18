@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
-import { useStore } from '@/store/useStore';
+import { useGroups, useGroupMembers, useMembers, Group, Member } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,20 +14,58 @@ export function GroupForm() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { members, addGroup, updateGroup, getGroup } = useStore();
-
-  const existingGroup = id ? getGroup(id) : undefined;
-  const isEditing = !!existingGroup;
+  const { getGroup, createGroup, updateGroup } = useGroups();
+  const { getGroupMembers, setGroupMembers } = useGroupMembers();
+  const { getMembers } = useMembers();
 
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [members, setMembersState] = useState<Member[]>([]);
+  const [existingGroup, setExistingGroup] = useState<Group | null>(null);
+  const isEditing = !!id;
+
   const [form, setForm] = useState({
-    name: existingGroup?.name || '',
-    description: existingGroup?.description || '',
-    memberIds: existingGroup?.memberIds || [] as string[],
+    name: '',
+    description: '',
+    memberIds: [] as string[],
   });
 
-  const activeMembers = members.filter(m => m.isActive);
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
+  const loadData = async () => {
+    try {
+      setPageLoading(true);
+      const membersData = await getMembers();
+      setMembersState(membersData || []);
+
+      if (id) {
+        const group = await getGroup(id);
+        if (group) {
+          setExistingGroup(group);
+          setForm(prev => ({
+            ...prev,
+            name: group.name,
+            description: group.description || '',
+          }));
+
+          const groupMembers = await getGroupMembers(id);
+          setForm(prev => ({
+            ...prev,
+            memberIds: (groupMembers || []).map(gm => gm.member_id),
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setPageLoading(false);
+    }
+  };
+
+  const activeMembers = members.filter(m => m.is_active);
   const filteredMembers = activeMembers.filter(m =>
     m.name.toLowerCase().includes(search.toLowerCase()) ||
     m.surname.toLowerCase().includes(search.toLowerCase())
@@ -57,30 +95,44 @@ export function GroupForm() {
     }
 
     try {
-      if (isEditing) {
-        updateGroup(id!, form);
+      if (isEditing && id) {
+        await updateGroup(id, { name: form.name, description: form.description });
+        await setGroupMembers(id, form.memberIds);
         toast({
           title: 'Group Updated',
           description: `${form.name} has been updated.`,
         });
       } else {
-        addGroup(form);
+        const newGroup = await createGroup({ name: form.name, description: form.description });
+        if (newGroup && form.memberIds.length > 0) {
+          await setGroupMembers(newGroup.id, form.memberIds);
+        }
         toast({
           title: 'Group Created',
           description: `${form.name} has been created.`,
         });
       }
       navigate('/groups');
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        description: error.message || 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
   };
+
+  if (pageLoading) {
+    return (
+      <Layout title={isEditing ? 'Edit Group' : 'Create Group'} showBack onBack={() => navigate('/groups')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout

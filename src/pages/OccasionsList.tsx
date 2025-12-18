@@ -1,18 +1,66 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
-import { useStore } from '@/store/useStore';
+import { useOccasions, useAttendance, Occasion } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { Plus, Calendar, MapPin, Clock, Music } from 'lucide-react';
 import { format } from 'date-fns';
 
 export function OccasionsList() {
   const navigate = useNavigate();
-  const { occasions, attendance } = useStore();
+  const { getOccasions } = useOccasions();
+  const { getAttendanceForOccasion } = useAttendance();
+  
+  const [occasions, setOccasions] = useState<any[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, { present: number; total: number }>>({});
+  const [loading, setLoading] = useState(true);
 
-  const sortedOccasions = [...occasions].sort((a, b) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const occasionsData = await getOccasions();
+      setOccasions(occasionsData || []);
+
+      // Load attendance for each occasion
+      const attMap: Record<string, { present: number; total: number }> = {};
+      for (const occasion of (occasionsData || [])) {
+        const attendance = await getAttendanceForOccasion(occasion.id);
+        const present = attendance?.filter(a => a.is_present).length || 0;
+        attMap[occasion.id] = { present, total: attendance?.length || 0 };
+      }
+      setAttendanceMap(attMap);
+    } catch (error) {
+      console.error('Error loading occasions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout
+        title="Occasions"
+        rightAction={
+          <Button
+            onClick={() => navigate('/occasions/new')}
+            size="icon"
+            className="bg-primary text-primary-foreground rounded-full w-10 h-10"
+          >
+            <Plus className="w-5 h-5" />
+          </Button>
+        }
+      >
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout
@@ -32,11 +80,11 @@ export function OccasionsList() {
           {occasions.length} occasion{occasions.length !== 1 ? 's' : ''}
         </p>
 
-        {sortedOccasions.length > 0 ? (
+        {occasions.length > 0 ? (
           <div className="space-y-3">
-            {sortedOccasions.map((occasion, index) => {
-              const occasionAttendance = attendance.filter(a => a.occasionId === occasion.id);
-              const presentCount = occasionAttendance.filter(a => a.isPresent).length;
+            {occasions.map((occasion, index) => {
+              const att = attendanceMap[occasion.id] || { present: 0, total: 0 };
+              const kalamCount = occasion.kalam_assignments?.length || 0;
 
               return (
                 <motion.div
@@ -64,7 +112,7 @@ export function OccasionsList() {
                       </div>
                       <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
                         <Clock className="w-3 h-3" />
-                        <span>{occasion.startTime} - {occasion.endTime}</span>
+                        <span>{occasion.start_time} - {occasion.end_time}</span>
                       </div>
                     </div>
                   </div>
@@ -73,11 +121,11 @@ export function OccasionsList() {
                   <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Music className="w-3 h-3" />
-                      <span>{occasion.kalamAssignments.length} Kalam</span>
+                      <span>{kalamCount} Kalam</span>
                     </div>
-                    {occasionAttendance.length > 0 && (
+                    {att.total > 0 && (
                       <div className="flex items-center gap-1 text-xs">
-                        <span className="text-success font-medium">{presentCount}</span>
+                        <span className="text-success font-medium">{att.present}</span>
                         <span className="text-muted-foreground">present</span>
                       </div>
                     )}

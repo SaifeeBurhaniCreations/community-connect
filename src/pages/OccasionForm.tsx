@@ -1,48 +1,95 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
-import { useStore } from '@/store/useStore';
+import { useOccasions, useGroups, Occasion, Group } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { KalamAssignment, KALAM_TYPES } from '@/types';
+import { KALAM_TYPES } from '@/types';
 import { Loader2, Plus, Trash2, Music } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+
+interface KalamFormItem {
+  id: string;
+  kalam_type: string;
+  group_id: string;
+  kalam_name: string;
+}
 
 export function OccasionForm() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { toast } = useToast();
-  const { groups, addOccasion, updateOccasion, getOccasion } = useStore();
-
-  const existingOccasion = id ? getOccasion(id) : undefined;
-  const isEditing = !!existingOccasion;
+  const { getOccasion, createOccasion, updateOccasion } = useOccasions();
+  const { getGroups } = useGroups();
 
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [groups, setGroupsState] = useState<Group[]>([]);
+  const [existingOccasion, setExistingOccasion] = useState<any>(null);
+  const isEditing = !!id;
+
   const [form, setForm] = useState({
-    title: existingOccasion?.title || '',
-    place: existingOccasion?.place || '',
-    date: existingOccasion?.date || '',
-    startTime: existingOccasion?.startTime || '',
-    endTime: existingOccasion?.endTime || '',
-    notes: existingOccasion?.notes || '',
-    kalamAssignments: existingOccasion?.kalamAssignments || [] as KalamAssignment[],
+    title: '',
+    place: '',
+    date: '',
+    start_time: '',
+    end_time: '',
+    notes: '',
+    kalamAssignments: [] as KalamFormItem[],
   });
+
+  useEffect(() => {
+    loadData();
+  }, [id]);
+
+  const loadData = async () => {
+    try {
+      setPageLoading(true);
+      const groupsData = await getGroups();
+      setGroupsState(groupsData || []);
+
+      if (id) {
+        const occasion = await getOccasion(id);
+        if (occasion) {
+          setExistingOccasion(occasion);
+          setForm({
+            title: occasion.title,
+            place: occasion.place,
+            date: occasion.date,
+            start_time: occasion.start_time,
+            end_time: occasion.end_time,
+            notes: occasion.notes || '',
+            kalamAssignments: (occasion.kalam_assignments || []).map((k: any) => ({
+              id: k.id,
+              kalam_type: k.kalam_type,
+              group_id: k.group_id || '',
+              kalam_name: k.kalam_name || '',
+            })),
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setPageLoading(false);
+    }
+  };
 
   const addKalamAssignment = () => {
     setForm(prev => ({
       ...prev,
       kalamAssignments: [
         ...prev.kalamAssignments,
-        { id: uuidv4(), kalamType: 'Salam', groupId: '', kalamName: '' }
+        { id: uuidv4(), kalam_type: 'Salam', group_id: '', kalam_name: '' }
       ]
     }));
   };
 
-  const updateKalamAssignment = (index: number, field: keyof KalamAssignment, value: string) => {
+  const updateKalamAssignment = (index: number, field: keyof KalamFormItem, value: string) => {
     setForm(prev => ({
       ...prev,
       kalamAssignments: prev.kalamAssignments.map((k, i) =>
@@ -62,7 +109,7 @@ export function OccasionForm() {
     e.preventDefault();
     setLoading(true);
 
-    if (!form.title || !form.place || !form.date || !form.startTime || !form.endTime) {
+    if (!form.title || !form.place || !form.date || !form.start_time || !form.end_time) {
       toast({
         title: 'Missing Fields',
         description: 'Please fill in all required fields.',
@@ -73,30 +120,55 @@ export function OccasionForm() {
     }
 
     try {
-      if (isEditing) {
-        updateOccasion(id!, form);
+      const occasionData = {
+        title: form.title,
+        place: form.place,
+        date: form.date,
+        start_time: form.start_time,
+        end_time: form.end_time,
+        notes: form.notes,
+      };
+
+      const kalamData = form.kalamAssignments.map(k => ({
+        kalam_type: k.kalam_type,
+        group_id: k.group_id || null,
+        kalam_name: k.kalam_name || null,
+      }));
+
+      if (isEditing && id) {
+        await updateOccasion(id, occasionData, kalamData);
         toast({
           title: 'Occasion Updated',
           description: `${form.title} has been updated.`,
         });
       } else {
-        addOccasion(form);
+        await createOccasion(occasionData, kalamData);
         toast({
           title: 'Occasion Created',
           description: `${form.title} has been created.`,
         });
       }
       navigate('/occasions');
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        description: error.message || 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
   };
+
+  if (pageLoading) {
+    return (
+      <Layout title={isEditing ? 'Edit Occasion' : 'New Occasion'} showBack onBack={() => navigate('/occasions')}>
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout
@@ -144,22 +216,22 @@ export function OccasionForm() {
         {/* Time */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="startTime">Start Time *</Label>
+            <Label htmlFor="start_time">Start Time *</Label>
             <Input
-              id="startTime"
+              id="start_time"
               type="time"
-              value={form.startTime}
-              onChange={(e) => setForm(prev => ({ ...prev, startTime: e.target.value }))}
+              value={form.start_time}
+              onChange={(e) => setForm(prev => ({ ...prev, start_time: e.target.value }))}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="endTime">End Time *</Label>
+            <Label htmlFor="end_time">End Time *</Label>
             <Input
-              id="endTime"
+              id="end_time"
               type="time"
-              value={form.endTime}
-              onChange={(e) => setForm(prev => ({ ...prev, endTime: e.target.value }))}
+              value={form.end_time}
+              onChange={(e) => setForm(prev => ({ ...prev, end_time: e.target.value }))}
               required
             />
           </div>
@@ -216,8 +288,8 @@ export function OccasionForm() {
                   <div className="space-y-2">
                     <Label>Kalam Type</Label>
                     <Select
-                      value={kalam.kalamType}
-                      onValueChange={(value) => updateKalamAssignment(index, 'kalamType', value)}
+                      value={kalam.kalam_type}
+                      onValueChange={(value) => updateKalamAssignment(index, 'kalam_type', value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select type" />
@@ -236,8 +308,8 @@ export function OccasionForm() {
                   <div className="space-y-2">
                     <Label>Assigned Group</Label>
                     <Select
-                      value={kalam.groupId}
-                      onValueChange={(value) => updateKalamAssignment(index, 'groupId', value)}
+                      value={kalam.group_id}
+                      onValueChange={(value) => updateKalamAssignment(index, 'group_id', value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select group" />
@@ -256,8 +328,8 @@ export function OccasionForm() {
                   <div className="space-y-2">
                     <Label>Kalam Name</Label>
                     <Input
-                      value={kalam.kalamName}
-                      onChange={(e) => updateKalamAssignment(index, 'kalamName', e.target.value)}
+                      value={kalam.kalam_name}
+                      onChange={(e) => updateKalamAssignment(index, 'kalam_name', e.target.value)}
                       placeholder="e.g., Ya Hussain Ya Mazloom"
                     />
                   </div>

@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { HouseColor, HOUSE_COLORS, GRADES, CLASSES } from '@/types';
 import { Camera, Loader2 } from 'lucide-react';
+
+const GRADES = ['Z', 'A', 'B', 'C', 'D'];
 
 export function MemberForm() {
   const navigate = useNavigate();
@@ -28,11 +29,11 @@ export function MemberForm() {
   const [form, setForm] = useState({
     name: '',
     surname: '',
-    house_color: 'red' as HouseColor,
+    house_color: 'blue',
     address: '',
     its_number: '',
     mobile_number: '',
-    grade: '1',
+    grade: 'Z',
     class: 'A',
     profile_photo: '',
     is_active: true,
@@ -55,7 +56,7 @@ export function MemberForm() {
           setForm({
             name: member.name,
             surname: member.surname,
-            house_color: member.house_color as HouseColor,
+            house_color: member.house_color,
             address: member.address || '',
             its_number: member.its_number,
             mobile_number: member.mobile_number || '',
@@ -77,43 +78,51 @@ export function MemberForm() {
     e.preventDefault();
     setLoading(true);
 
-    // Validate ITS number uniqueness
-    const duplicateIts = allMembers.find(
-      m => m.its_number === form.its_number && m.id !== id
-    );
-    if (duplicateIts) {
+    // Validate required fields - only name is required
+    if (!form.name) {
       toast({
-        title: 'Duplicate ITS Number',
-        description: 'A member with this ITS number already exists.',
+        title: 'Missing Fields',
+        description: 'Please enter the member name.',
         variant: 'destructive',
       });
       setLoading(false);
       return;
     }
 
-    // Validate required fields
-    if (!form.name || !form.surname || !form.its_number) {
-      toast({
-        title: 'Missing Fields',
-        description: 'Please fill in all required fields.',
-        variant: 'destructive',
-      });
-      setLoading(false);
-      return;
+    // Validate ITS number uniqueness only if provided
+    if (form.its_number) {
+      const duplicateIts = allMembers.find(
+        m => m.its_number === form.its_number && m.id !== id
+      );
+      if (duplicateIts) {
+        toast({
+          title: 'Duplicate ITS Number',
+          description: 'A member with this ITS number already exists.',
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      }
     }
 
     try {
+      const memberData = {
+        ...form,
+        surname: form.surname || form.name, // Use name as surname if not provided
+        its_number: form.its_number || `ITS-${Date.now()}`, // Generate if not provided
+      };
+
       if (isEditing && id) {
-        await updateMember(id, form);
+        await updateMember(id, memberData);
         toast({
           title: 'Member Updated',
-          description: `${form.name} ${form.surname} has been updated.`,
+          description: `${form.name} has been updated.`,
         });
       } else {
-        await createMember(form);
+        await createMember(memberData);
         toast({
           title: 'Member Added',
-          description: `${form.name} ${form.surname} has been added.`,
+          description: `${form.name} has been added.`,
         });
       }
       navigate('/members');
@@ -203,102 +212,58 @@ export function MemberForm() {
           </label>
         </div>
 
-        {/* Name Fields */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">First Name *</Label>
-            <Input
-              id="name"
-              value={form.name}
-              onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Enter first name"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="surname">Surname *</Label>
-            <Input
-              id="surname"
-              value={form.surname}
-              onChange={(e) => setForm(prev => ({ ...prev, surname: e.target.value }))}
-              placeholder="Enter surname"
-              required
-            />
-          </div>
-        </div>
-
-        {/* ITS Number */}
+        {/* Name Field - Required */}
         <div className="space-y-2">
-          <Label htmlFor="its_number">ITS Number *</Label>
+          <Label htmlFor="name">Name *</Label>
           <Input
-            id="its_number"
-            value={form.its_number}
-            onChange={(e) => setForm(prev => ({ ...prev, its_number: e.target.value }))}
-            placeholder="Enter ITS number"
+            id="name"
+            value={form.name}
+            onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
+            placeholder="Enter name"
             required
           />
         </div>
 
-        {/* House Color */}
+        {/* Surname - Optional */}
         <div className="space-y-2">
-          <Label>House Color *</Label>
-          <div className="grid grid-cols-4 gap-2">
-            {HOUSE_COLORS.map(({ value, label, className }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setForm(prev => ({ ...prev, house_color: value }))}
-                className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                  form.house_color === value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full ${className}`} />
-                <span className="text-xs font-medium">{label}</span>
-              </button>
-            ))}
-          </div>
+          <Label htmlFor="surname">Surname</Label>
+          <Input
+            id="surname"
+            value={form.surname}
+            onChange={(e) => setForm(prev => ({ ...prev, surname: e.target.value }))}
+            placeholder="Enter surname (optional)"
+          />
         </div>
 
-        {/* Grade & Class */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Grade *</Label>
-            <Select
-              value={form.grade}
-              onValueChange={(value) => setForm(prev => ({ ...prev, grade: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select grade" />
-              </SelectTrigger>
-              <SelectContent>
-                {GRADES.map((grade) => (
-                  <SelectItem key={grade} value={grade}>
-                    Grade {grade}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Class *</Label>
-            <Select
-              value={form.class}
-              onValueChange={(value) => setForm(prev => ({ ...prev, class: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select class" />
-              </SelectTrigger>
-              <SelectContent>
-                {CLASSES.map((cls) => (
-                  <SelectItem key={cls} value={cls}>
-                    Class {cls}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* Grade */}
+        <div className="space-y-2">
+          <Label>Grade</Label>
+          <Select
+            value={form.grade}
+            onValueChange={(value) => setForm(prev => ({ ...prev, grade: value }))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select grade" />
+            </SelectTrigger>
+            <SelectContent>
+              {GRADES.map((grade) => (
+                <SelectItem key={grade} value={grade}>
+                  {grade}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* ITS Number - Optional */}
+        <div className="space-y-2">
+          <Label htmlFor="its_number">ITS Number</Label>
+          <Input
+            id="its_number"
+            value={form.its_number}
+            onChange={(e) => setForm(prev => ({ ...prev, its_number: e.target.value }))}
+            placeholder="Enter ITS number (optional)"
+          />
         </div>
 
         {/* Mobile Number */}
