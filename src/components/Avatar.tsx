@@ -1,9 +1,17 @@
-import { User } from 'lucide-react';
-import { Member } from '@/types';
 import { HouseBadge } from './HouseBadge';
+import { HouseColor } from '@/types';
+
+interface AvatarMember {
+  name?: string;
+  surname?: string;
+  profilePhoto?: string;
+  profile_photo?: string;
+  houseColor?: HouseColor;
+  house_color?: string;
+}
 
 interface AvatarProps {
-  member: Member;
+  member: AvatarMember;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showHouse?: boolean;
 }
@@ -23,14 +31,18 @@ const houseSizeMap = {
 } as const;
 
 export function Avatar({ member, size = 'md', showHouse = true }: AvatarProps) {
-  const initials = `${member.name[0]}${member.surname[0]}`.toUpperCase();
+  const name = member.name || '';
+  const surname = member.surname || '';
+  const initials = name && surname ? `${name[0]}${surname[0]}`.toUpperCase() : '?';
+  const photo = member.profilePhoto || member.profile_photo;
+  const houseColor = (member.houseColor || member.house_color) as HouseColor | undefined;
 
   return (
     <div className="relative inline-block">
-      {member.profilePhoto ? (
+      {photo ? (
         <img
-          src={member.profilePhoto}
-          alt={`${member.name} ${member.surname}`}
+          src={photo}
+          alt={`${name} ${surname}`}
           className={`${sizeMap[size]} rounded-full object-cover ring-2 ring-border`}
         />
       ) : (
@@ -40,9 +52,9 @@ export function Avatar({ member, size = 'md', showHouse = true }: AvatarProps) {
           <span className="font-medium text-secondary-foreground">{initials}</span>
         </div>
       )}
-      {showHouse && (
+      {showHouse && houseColor && (
         <div className="absolute -bottom-0.5 -right-0.5">
-          <HouseBadge color={member.houseColor} size={houseSizeMap[size]} />
+          <HouseBadge color={houseColor} size={houseSizeMap[size]} />
         </div>
       )}
     </div>
