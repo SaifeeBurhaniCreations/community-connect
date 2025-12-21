@@ -12,11 +12,12 @@ interface AvatarMember {
 
 interface AvatarProps {
   member: AvatarMember;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   showHouse?: boolean;
 }
 
 const sizeMap = {
+  xs: 'w-6 h-6 text-[10px]',
   sm: 'w-8 h-8 text-xs',
   md: 'w-10 h-10 text-sm',
   lg: 'w-12 h-12 text-base',
@@ -24,6 +25,7 @@ const sizeMap = {
 };
 
 const houseSizeMap = {
+  xs: 'sm',
   sm: 'sm',
   md: 'sm',
   lg: 'md',

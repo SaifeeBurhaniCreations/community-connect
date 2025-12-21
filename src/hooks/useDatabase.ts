@@ -150,6 +150,15 @@ export const useGroupMembers = () => {
     return data;
   }, []);
 
+  const getAllGroupMembers = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('group_members')
+      .select('member_id, group_id');
+    
+    if (error) throw error;
+    return data;
+  }, []);
+
   const getMemberGroups = useCallback(async (memberId: string) => {
     const { data, error } = await supabase
       .from('group_members')
@@ -198,7 +207,7 @@ export const useGroupMembers = () => {
     }
   }, []);
 
-  return { getGroupMembers, getMemberGroups, addMemberToGroup, removeMemberFromGroup, setGroupMembers };
+  return { getGroupMembers, getAllGroupMembers, getMemberGroups, addMemberToGroup, removeMemberFromGroup, setGroupMembers };
 };
 
 // Occasions
