@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { useAnalytics, useMembers, useOccasions, useAttendance } from '@/hooks/useDatabase';
+import { useAnalytics, useMembers, useOccasions, useAttendance, useGroupMembers } from '@/hooks/useDatabase';
 import { Avatar } from '@/components/Avatar';
 import { 
   Users, 
@@ -13,7 +13,8 @@ import {
   UserX,
   ChevronRight,
   Plus,
-  BarChart3
+  BarChart3,
+  UserMinus
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -24,9 +25,20 @@ import {
   Bar,
   XAxis,
   YAxis,
-  Tooltip
+  Tooltip,
+  LineChart,
+  Line,
+  CartesianGrid
 } from 'recharts';
 import { BottomNav } from '@/components/BottomNav';
+
+const GRADE_CONFIG: Record<string, { label: string; color: string }> = {
+  'Z': { label: 'Elite', color: 'hsl(45, 93%, 47%)' },
+  'A': { label: 'Excellent', color: 'hsl(142, 76%, 36%)' },
+  'B': { label: 'Good', color: 'hsl(217, 91%, 60%)' },
+  'C': { label: 'Average', color: 'hsl(38, 92%, 50%)' },
+  'D': { label: 'Beginner', color: 'hsl(0, 84%, 60%)' },
+};
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -35,12 +47,16 @@ export function Dashboard() {
   const { getMembers } = useMembers();
   const { getOccasions } = useOccasions();
   const { getAttendanceForOccasion } = useAttendance();
+  const { getAllGroupMembers } = useGroupMembers();
 
   const [stats, setStats] = useState({ totalMembers: 0, totalGroups: 0, totalOccasions: 0 });
   const [recentMembers, setRecentMembers] = useState<any[]>([]);
   const [lastOccasion, setLastOccasion] = useState<any>(null);
   const [lastOccasionAttendance, setLastOccasionAttendance] = useState<{ present: number; absent: number }>({ present: 0, absent: 0 });
   const [groupPerformance, setGroupPerformance] = useState<any[]>([]);
+  const [gradeDistribution, setGradeDistribution] = useState<any[]>([]);
+  const [attendanceTrends, setAttendanceTrends] = useState<any[]>([]);
+  const [unassignedMembers, setUnassignedMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,16 +67,44 @@ export function Dashboard() {
     try {
       setLoading(true);
       
-      const [dashStats, members, occasions, performance] = await Promise.all([
+      const [dashStats, members, occasions, performance, trends, groupMembersData] = await Promise.all([
         getDashboardStats(),
         getMembers(),
         getOccasions(),
         getGroupPerformance(),
+        getAttendanceTrends(5),
+        getAllGroupMembers(),
       ]);
 
       setStats(dashStats);
       setRecentMembers((members || []).slice(0, 5));
       setGroupPerformance(performance.slice(0, 5));
+      setAttendanceTrends(trends);
+
+      // Calculate grade distribution
+      const gradeCount: Record<string, number> = {};
+      (members || []).forEach((member: any) => {
+        const grade = member.grade || 'D';
+        gradeCount[grade] = (gradeCount[grade] || 0) + 1;
+      });
+      
+      const gradeData = Object.entries(gradeCount)
+        .map(([grade, count]) => ({
+          grade,
+          count,
+          label: GRADE_CONFIG[grade]?.label || grade,
+          color: GRADE_CONFIG[grade]?.color || 'hsl(var(--muted))',
+        }))
+        .sort((a, b) => {
+          const order = ['Z', 'A', 'B', 'C', 'D'];
+          return order.indexOf(a.grade) - order.indexOf(b.grade);
+        });
+      setGradeDistribution(gradeData);
+
+      // Find unassigned members
+      const assignedMemberIds = new Set((groupMembersData || []).map(gm => gm.member_id));
+      const unassigned = (members || []).filter((m: any) => !assignedMemberIds.has(m.id));
+      setUnassignedMembers(unassigned);
 
       // Get last occasion and its attendance
       if (occasions && occasions.length > 0) {
@@ -163,11 +207,151 @@ export function Dashboard() {
           </button>
         </motion.div>
 
+        {/* Unassigned Members Alert */}
+        {unassignedMembers.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.18 }}
+            className="card-elevated p-4 border-l-4 border-l-warning"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <UserMinus className="w-5 h-5 text-warning" />
+                <h2 className="font-semibold text-foreground">Unassigned Members</h2>
+              </div>
+              <span className="text-xs bg-warning/20 text-warning px-2 py-1 rounded-full font-medium">
+                {unassignedMembers.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {unassignedMembers.slice(0, 3).map((member) => (
+                <div
+                  key={member.id}
+                  onClick={() => navigate(`/members/${member.id}`)}
+                  className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-secondary/50 cursor-pointer transition-colors"
+                >
+                  <Avatar member={member as any} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate text-sm">
+                      {member.name} {member.surname}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Grade {member.grade}</p>
+                  </div>
+                </div>
+              ))}
+              {unassignedMembers.length > 3 && (
+                <button
+                  onClick={() => navigate('/members')}
+                  className="text-primary text-sm font-medium flex items-center gap-1 mt-2"
+                >
+                  +{unassignedMembers.length - 3} more <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Grade Distribution */}
+        {gradeDistribution.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            className="card-elevated p-4"
+          >
+            <h2 className="font-semibold text-foreground mb-4">Grade Distribution</h2>
+            <div className="flex items-center gap-4">
+              <div className="w-28 h-28">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={gradeDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={28}
+                      outerRadius={45}
+                      paddingAngle={2}
+                      dataKey="count"
+                    >
+                      {gradeDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-1.5">
+                {gradeDistribution.map((grade) => (
+                  <div key={grade.grade} className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: grade.color }}
+                    />
+                    <span className="text-sm text-muted-foreground flex-1">
+                      {grade.grade} - {grade.label}
+                    </span>
+                    <span className="font-semibold text-foreground text-sm">{grade.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Attendance Trends */}
+        {attendanceTrends.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.25 }}
+            className="card-elevated p-4"
+          >
+            <h2 className="font-semibold text-foreground mb-4">Attendance Trends</h2>
+            <div className="h-36">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={attendanceTrends}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis 
+                    dataKey="title" 
+                    tick={{ fontSize: 10 }} 
+                    tickFormatter={(value) => value.slice(0, 6)}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <YAxis 
+                    domain={[0, 100]} 
+                    tick={{ fontSize: 10 }}
+                    stroke="hsl(var(--muted-foreground))"
+                    tickFormatter={(value) => `${value}%`}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => [`${value}%`, 'Attendance']}
+                    contentStyle={{ 
+                      background: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      fontSize: '12px'
+                    }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="percentage" 
+                    stroke="hsl(168, 84%, 26%)" 
+                    strokeWidth={2}
+                    dot={{ fill: 'hsl(168, 84%, 26%)', r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+        )}
+
         {/* Attendance Chart */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
           className="card-elevated p-4"
         >
           <div className="flex items-center justify-between mb-4">
@@ -216,7 +400,7 @@ export function Dashboard() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.3 }}
+            transition={{ duration: 0.3, delay: 0.35 }}
             className="card-elevated p-4"
           >
             <h2 className="font-semibold text-foreground mb-4">Group Performance</h2>
