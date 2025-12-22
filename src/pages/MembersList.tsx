@@ -3,34 +3,81 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
-import { useMembers, Member } from '@/hooks/useDatabase';
+import { useMembers, useGroupMembers, useGroups, useAttendance, Member } from '@/hooks/useDatabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, Plus, Filter, UserX, Users, UserCheck, ChevronRight } from 'lucide-react';
-import { HOUSE_COLORS, HouseColor } from '@/types';
-import { HouseBadge } from '@/components/HouseBadge';
+import { HouseColor } from '@/types';
+
+const GRADE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  'Z': { bg: 'bg-amber-500', text: 'text-amber-500', label: 'Z - Elite' },
+  'A': { bg: 'bg-emerald-500', text: 'text-emerald-500', label: 'A - Advanced' },
+  'B': { bg: 'bg-blue-500', text: 'text-blue-500', label: 'B - Intermediate' },
+  'C': { bg: 'bg-purple-500', text: 'text-purple-500', label: 'C - Developing' },
+  'D': { bg: 'bg-slate-400', text: 'text-slate-400', label: 'D - Beginner' },
+};
 
 export function MembersList() {
   const navigate = useNavigate();
   const { getMembers } = useMembers();
+  const { getAllGroupMembers } = useGroupMembers();
+  const { getGroups } = useGroups();
+  const { getMemberAttendanceStats } = useAttendance();
   
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filterHouse, setFilterHouse] = useState<HouseColor | 'all'>('all');
+  const [filterGrade, setFilterGrade] = useState<string | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [groupMemberships, setGroupMemberships] = useState<Record<string, string>>({});
+  const [groups, setGroups] = useState<Record<string, string>>({});
+  const [attendanceStats, setAttendanceStats] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    loadMembers();
+    loadData();
   }, []);
 
-  const loadMembers = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const data = await getMembers();
-      setMembers(data || []);
+      const [membersData, groupMembersData, groupsData] = await Promise.all([
+        getMembers(),
+        getAllGroupMembers(),
+        getGroups(),
+      ]);
+      
+      setMembers(membersData || []);
+      
+      // Build group lookup
+      const groupLookup: Record<string, string> = {};
+      (groupsData || []).forEach(g => {
+        groupLookup[g.id] = g.name;
+      });
+      setGroups(groupLookup);
+      
+      // Build member -> group mapping
+      const memberGroupMap: Record<string, string> = {};
+      (groupMembersData || []).forEach(gm => {
+        memberGroupMap[gm.member_id] = gm.group_id;
+      });
+      setGroupMemberships(memberGroupMap);
+      
+      // Load attendance stats for each member
+      const statsMap: Record<string, number> = {};
+      const activeMembers = (membersData || []).filter(m => m.is_active);
+      await Promise.all(
+        activeMembers.map(async (member) => {
+          const stats = await getMemberAttendanceStats(member.id);
+          if (stats && stats.total > 0) {
+            statsMap[member.id] = Math.round((stats.attended / stats.total) * 100);
+          } else {
+            statsMap[member.id] = -1; // No data
+          }
+        })
+      );
+      setAttendanceStats(statsMap);
     } catch (error) {
-      console.error('Error loading members:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
@@ -46,13 +93,18 @@ export function MembersList() {
           m.name.toLowerCase().includes(search.toLowerCase()) ||
           m.surname.toLowerCase().includes(search.toLowerCase()) ||
           m.its_number.includes(search);
-        const matchesHouse = filterHouse === 'all' || m.house_color === filterHouse;
-        return matchesSearch && matchesHouse;
+        const matchesGrade = filterGrade === 'all' || m.grade === filterGrade;
+        return matchesSearch && matchesGrade;
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [activeMembers, search, filterHouse]);
+      .sort((a, b) => {
+        // Sort by grade first (Z, A, B, C, D)
+        const gradeOrder = ['Z', 'A', 'B', 'C', 'D'];
+        const gradeCompare = gradeOrder.indexOf(a.grade) - gradeOrder.indexOf(b.grade);
+        if (gradeCompare !== 0) return gradeCompare;
+        return a.name.localeCompare(b.name);
+      });
+  }, [activeMembers, search, filterGrade]);
 
-  // Convert database member to component format
   const toMemberFormat = (m: Member) => ({
     ...m,
     houseColor: m.house_color as HouseColor,
@@ -62,6 +114,13 @@ export function MembersList() {
     isActive: m.is_active,
     createdAt: m.created_at,
   });
+
+  const getAttendanceColor = (percentage: number) => {
+    if (percentage === -1) return 'text-muted-foreground';
+    if (percentage >= 80) return 'text-emerald-500';
+    if (percentage >= 60) return 'text-amber-500';
+    return 'text-red-500';
+  };
 
   if (loading) {
     return (
@@ -146,7 +205,7 @@ export function MembersList() {
             </Button>
           </div>
 
-          {/* House Filters */}
+          {/* Grade Filters */}
           <AnimatePresence>
             {showFilters && (
               <motion.div
@@ -157,27 +216,27 @@ export function MembersList() {
               >
                 <div className="flex gap-2 flex-wrap pb-1">
                   <button
-                    onClick={() => setFilterHouse('all')}
+                    onClick={() => setFilterGrade('all')}
                     className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                      filterHouse === 'all'
+                      filterGrade === 'all'
                         ? 'bg-primary text-primary-foreground shadow-md'
                         : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                     }`}
                   >
-                    All Houses
+                    All Grades
                   </button>
-                  {HOUSE_COLORS.map(({ value, label, className }) => (
+                  {Object.entries(GRADE_COLORS).map(([grade, { bg, label }]) => (
                     <button
-                      key={value}
-                      onClick={() => setFilterHouse(value)}
+                      key={grade}
+                      onClick={() => setFilterGrade(grade)}
                       className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                        filterHouse === value
+                        filterGrade === grade
                           ? 'bg-primary text-primary-foreground shadow-md'
                           : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                       }`}
                     >
-                      <span className={`w-3 h-3 rounded-full ${className}`} />
-                      {label}
+                      <span className={`w-2.5 h-2.5 rounded-full ${bg}`} />
+                      {grade}
                     </button>
                   ))}
                 </div>
@@ -195,40 +254,54 @@ export function MembersList() {
         <div className="flex-1 overflow-y-auto px-4 pb-24">
           <div className="space-y-2">
             {filteredMembers.length > 0 ? (
-              filteredMembers.map((member, index) => (
-                <motion.div
-                  key={member.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.03 }}
-                  onClick={() => navigate(`/members/${member.id}`)}
-                  className="bg-card rounded-2xl p-4 flex items-center gap-4 cursor-pointer active:scale-[0.98] transition-all border border-border/50 shadow-sm hover:shadow-md hover:border-primary/30"
-                >
-                  <Avatar member={toMemberFormat(member) as any} size="lg" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+              filteredMembers.map((member, index) => {
+                const gradeColor = GRADE_COLORS[member.grade] || GRADE_COLORS['D'];
+                const groupId = groupMemberships[member.id];
+                const groupName = groupId ? groups[groupId] : null;
+                const attendance = attendanceStats[member.id];
+                
+                return (
+                  <motion.div
+                    key={member.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.03 }}
+                    onClick={() => navigate(`/members/${member.id}`)}
+                    className="bg-card rounded-2xl p-4 flex items-center gap-4 cursor-pointer active:scale-[0.98] transition-all border border-border/50 shadow-sm hover:shadow-md hover:border-primary/30"
+                  >
+                    <div className="relative">
+                      <Avatar member={toMemberFormat(member) as any} size="lg" />
+                      {/* Grade indicator dot */}
+                      <div className={`absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full ${gradeColor.bg} border-2 border-card flex items-center justify-center`}>
+                        <span className="text-[8px] font-bold text-white">{member.grade}</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-foreground truncate">
                         {member.name} {member.surname}
                       </h3>
-                      <HouseBadge color={member.house_color as HouseColor} size="sm" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      ITS: {member.its_number}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                        Grade {member.grade}
-                      </span>
-                      {member.class && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                          Class {member.class}
+                      <p className="text-sm text-muted-foreground">
+                        ITS: {member.its_number}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {groupName ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                            {groupName}
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                            No Group
+                          </span>
+                        )}
+                        <span className={`text-xs font-medium ${getAttendanceColor(attendance)}`}>
+                          {attendance === -1 ? 'No data' : `${attendance}% attendance`}
                         </span>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                </motion.div>
-              ))
+                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                  </motion.div>
+                );
+              })
             ) : (
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -240,11 +313,11 @@ export function MembersList() {
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">No members found</h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  {search || filterHouse !== 'all'
+                  {search || filterGrade !== 'all'
                     ? 'Try adjusting your search or filters'
                     : 'Add your first member to get started'}
                 </p>
-                {!search && filterHouse === 'all' && (
+                {!search && filterGrade === 'all' && (
                   <Button 
                     onClick={() => navigate('/members/new')}
                     className="rounded-xl"
