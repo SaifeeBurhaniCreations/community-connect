@@ -111,10 +111,12 @@ export function Dashboard() {
       if (occasions && occasions.length > 0) {
         const last = occasions[0];
         setLastOccasion(last);
-        
+
         const attendance = await getAttendanceForOccasion(last.id);
         const present = attendance?.filter(a => a.is_present).length || 0;
-        const absent = attendance?.filter(a => !a.is_present).length || 0;
+        // Treat anyone not marked present as absent
+        const totalActiveMembers = (members || []).filter((m: any) => m.is_active).length;
+        const absent = Math.max(0, totalActiveMembers - present);
         setLastOccasionAttendance({ present, absent });
       }
     } catch (error) {

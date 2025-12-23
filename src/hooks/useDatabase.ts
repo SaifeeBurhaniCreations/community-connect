@@ -390,31 +390,41 @@ export const useAnalytics = () => {
   }, []);
 
   const getAttendanceTrends = useCallback(async (limit: number = 10) => {
-    const { data: occasions, error } = await supabase
-      .from('occasions')
-      .select('id, title, date')
-      .order('date', { ascending: false })
-      .limit(limit);
-    
+    const [{ data: occasions, error }, { count: activeMembersCount, error: membersCountError }] = await Promise.all([
+      supabase
+        .from('occasions')
+        .select('id, title, date')
+        .order('date', { ascending: false })
+        .limit(limit),
+      supabase
+        .from('members')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true),
+    ]);
+
     if (error) throw error;
+    if (membersCountError) throw membersCountError;
+
+    const totalActiveMembers = activeMembersCount || 0;
 
     const trends = await Promise.all(
       (occasions || []).map(async (occasion) => {
         const { data: attendance } = await supabase
           .from('attendance')
           .select('is_present')
-          .eq('occasion_id', occasion.id);
-        
-        const total = attendance?.length || 0;
-        const present = attendance?.filter(a => a.is_present).length || 0;
-        
+          .eq('occasion_id', occasion.id)
+          .eq('is_present', true);
+
+        const present = attendance?.length || 0;
+        const total = totalActiveMembers;
+
         return {
           occasionId: occasion.id,
           title: occasion.title,
           date: occasion.date,
           total,
           present,
-          absent: total - present,
+          absent: Math.max(0, total - present),
           percentage: total > 0 ? Math.round((present / total) * 100) : 0,
         };
       })
@@ -424,11 +434,15 @@ export const useAnalytics = () => {
   }, []);
 
   const getGroupPerformance = useCallback(async () => {
-    const { data: groups, error } = await supabase
-      .from('groups')
-      .select('id, name');
-    
+    const [{ data: groups, error }, { count: totalOccasions, error: occasionsCountError }] = await Promise.all([
+      supabase.from('groups').select('id, name'),
+      supabase.from('occasions').select('*', { count: 'exact', head: true }),
+    ]);
+
     if (error) throw error;
+    if (occasionsCountError) throw occasionsCountError;
+
+    const occasionsTotal = totalOccasions || 0;
 
     const performance = await Promise.all(
       (groups || []).map(async (group) => {
@@ -436,9 +450,9 @@ export const useAnalytics = () => {
           .from('group_members')
           .select('member_id')
           .eq('group_id', group.id);
-        
+
         const memberIds = members?.map(m => m.member_id) || [];
-        
+
         if (memberIds.length === 0) {
           return { groupId: group.id, name: group.name, attendance: 0, memberCount: 0 };
         }
@@ -446,11 +460,13 @@ export const useAnalytics = () => {
         const { data: attendance } = await supabase
           .from('attendance')
           .select('is_present')
-          .in('member_id', memberIds);
-        
-        const total = attendance?.length || 0;
-        const present = attendance?.filter(a => a.is_present).length || 0;
-        
+          .in('member_id', memberIds)
+          .eq('is_present', true);
+
+        // Treat unmarked as absent: total possible marks = occasions * members
+        const total = occasionsTotal * memberIds.length;
+        const present = attendance?.length || 0;
+
         return {
           groupId: group.id,
           name: group.name,
@@ -464,28 +480,31 @@ export const useAnalytics = () => {
   }, []);
 
   const getMostActiveMembers = useCallback(async (limit: number = 5) => {
-    const { data: members, error } = await supabase
-      .from('members')
-      .select('id, name, surname')
-      .eq('is_active', true);
-    
+    const [{ data: members, error }, { count: totalOccasions, error: occasionsCountError }] = await Promise.all([
+      supabase.from('members').select('id, name, surname').eq('is_active', true),
+      supabase.from('occasions').select('*', { count: 'exact', head: true }),
+    ]);
+
     if (error) throw error;
+    if (occasionsCountError) throw occasionsCountError;
+
+    const occasionsTotal = totalOccasions || 0;
 
     const memberStats = await Promise.all(
       (members || []).map(async (member) => {
         const { data: attendance } = await supabase
           .from('attendance')
           .select('is_present')
-          .eq('member_id', member.id);
-        
-        const total = attendance?.length || 0;
-        const present = attendance?.filter(a => a.is_present).length || 0;
-        
+          .eq('member_id', member.id)
+          .eq('is_present', true);
+
+        const present = attendance?.length || 0;
+
         return {
           ...member,
           attended: present,
-          total,
-          percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+          total: occasionsTotal,
+          percentage: occasionsTotal > 0 ? Math.round((present / occasionsTotal) * 100) : 0,
         };
       })
     );
@@ -496,28 +515,31 @@ export const useAnalytics = () => {
   }, []);
 
   const getLeastActiveMembers = useCallback(async (limit: number = 5) => {
-    const { data: members, error } = await supabase
-      .from('members')
-      .select('id, name, surname')
-      .eq('is_active', true);
-    
+    const [{ data: members, error }, { count: totalOccasions, error: occasionsCountError }] = await Promise.all([
+      supabase.from('members').select('id, name, surname').eq('is_active', true),
+      supabase.from('occasions').select('*', { count: 'exact', head: true }),
+    ]);
+
     if (error) throw error;
+    if (occasionsCountError) throw occasionsCountError;
+
+    const occasionsTotal = totalOccasions || 0;
 
     const memberStats = await Promise.all(
       (members || []).map(async (member) => {
         const { data: attendance } = await supabase
           .from('attendance')
           .select('is_present')
-          .eq('member_id', member.id);
-        
-        const total = attendance?.length || 0;
-        const present = attendance?.filter(a => a.is_present).length || 0;
-        
+          .eq('member_id', member.id)
+          .eq('is_present', true);
+
+        const present = attendance?.length || 0;
+
         return {
           ...member,
           attended: present,
-          total,
-          percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+          total: occasionsTotal,
+          percentage: occasionsTotal > 0 ? Math.round((present / occasionsTotal) * 100) : 0,
         };
       })
     );
