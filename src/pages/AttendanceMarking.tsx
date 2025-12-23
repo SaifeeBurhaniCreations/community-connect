@@ -5,6 +5,7 @@ import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
 import { useOccasions, useMembers, useGroups, useGroupMembers, useAttendance, Member, Group } from '@/hooks/useDatabase';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Check, X, Users } from 'lucide-react';
 
 export function AttendanceMarking() {
@@ -121,8 +122,26 @@ export function AttendanceMarking() {
   if (loading) {
     return (
       <Layout title="Mark Attendance" showBack onBack={() => navigate('/occasions')}>
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="p-4 space-y-4">
+          {/* Stats Bar Skeleton */}
+          <Skeleton className="h-20 rounded-xl" />
+          
+          {/* Search Skeleton */}
+          <Skeleton className="h-10 rounded-lg" />
+          
+          {/* Group Filter Skeleton */}
+          <div className="flex gap-2 overflow-x-auto">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-20 rounded-full flex-shrink-0" />
+            ))}
+          </div>
+          
+          {/* Members List Skeleton */}
+          <div className="space-y-2">
+            {[...Array(8)].map((_, i) => (
+              <Skeleton key={i} className="h-20 rounded-xl" />
+            ))}
+          </div>
         </div>
       </Layout>
     );
@@ -163,7 +182,8 @@ export function AttendanceMarking() {
   };
 
   const presentCount = attendance.filter(a => a.is_present).length;
-  const totalMarked = attendance.length;
+  // All active members who are not marked present are considered absent
+  const absentCount = activeMembers.length - presentCount;
 
   return (
     <Layout
@@ -184,7 +204,7 @@ export function AttendanceMarking() {
               <p className="text-xs text-muted-foreground">Present</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold text-destructive">{totalMarked - presentCount}</p>
+              <p className="text-lg font-bold text-destructive">{absentCount}</p>
               <p className="text-xs text-muted-foreground">Absent</p>
             </div>
           </div>

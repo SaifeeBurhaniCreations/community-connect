@@ -5,6 +5,7 @@ import { Layout } from '@/components/Layout';
 import { Avatar } from '@/components/Avatar';
 import { useMembers, useAttendance, useGroupMembers, useGroups, Member, Group } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Edit, 
   Trash2, 
@@ -178,8 +179,32 @@ export function MemberDetail() {
   if (loading) {
     return (
       <Layout title="Member Details" showBack onBack={() => navigate('/members')}>
-        <div className="flex items-center justify-center h-64">
-          <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col min-h-[calc(100vh-8rem)] pb-20">
+          {/* Profile Header Skeleton */}
+          <div className="mx-4 mt-4">
+            <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-background rounded-3xl p-6 text-center border border-primary/10">
+              <Skeleton className="w-24 h-24 rounded-full mx-auto" />
+              <Skeleton className="h-8 w-48 mx-auto mt-4" />
+              <Skeleton className="h-4 w-32 mx-auto mt-2" />
+            </div>
+          </div>
+
+          {/* Group Card Skeleton */}
+          <div className="mx-4 mt-4">
+            <Skeleton className="h-20 rounded-2xl" />
+          </div>
+
+          {/* Stats Skeleton */}
+          <div className="mx-4 mt-4">
+            <Skeleton className="h-44 rounded-2xl" />
+          </div>
+
+          {/* Info Cards Skeleton */}
+          <div className="mx-4 mt-4 space-y-3">
+            <Skeleton className="h-20 rounded-2xl" />
+            <Skeleton className="h-20 rounded-2xl" />
+            <Skeleton className="h-20 rounded-2xl" />
+          </div>
         </div>
       </Layout>
     );

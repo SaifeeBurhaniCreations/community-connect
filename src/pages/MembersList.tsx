@@ -6,8 +6,8 @@ import { Avatar } from '@/components/Avatar';
 import { useMembers, useGroupMembers, useGroups, useAttendance, Member } from '@/hooks/useDatabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Plus, Filter, UserX, Users, UserCheck, ChevronRight } from 'lucide-react';
-import { HouseColor } from '@/types';
 
 const GRADE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   'Z': { bg: 'bg-amber-500', text: 'text-amber-500', label: 'Z - Elite' },
@@ -107,7 +107,7 @@ export function MembersList() {
 
   const toMemberFormat = (m: Member) => ({
     ...m,
-    houseColor: m.house_color as HouseColor,
+    houseColor: m.house_color,
     itsNumber: m.its_number,
     mobileNumber: m.mobile_number,
     profilePhoto: m.profile_photo,
@@ -125,8 +125,26 @@ export function MembersList() {
   if (loading) {
     return (
       <Layout title="Members">
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col h-full">
+          {/* Stats Cards Skeleton */}
+          <div className="px-4 pt-4 pb-2">
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="h-24 rounded-2xl" />
+              <Skeleton className="h-24 rounded-2xl" />
+            </div>
+          </div>
+          
+          {/* Search Skeleton */}
+          <div className="px-4 py-3">
+            <Skeleton className="h-11 rounded-xl" />
+          </div>
+          
+          {/* Members List Skeleton */}
+          <div className="flex-1 px-4 space-y-2">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-20 rounded-2xl" />
+            ))}
+          </div>
         </div>
       </Layout>
     );

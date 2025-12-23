@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useAnalytics, useMembers, useOccasions, useAttendance, useGroupMembers } from '@/hooks/useDatabase';
 import { Avatar } from '@/components/Avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Users, 
   FolderOpen, 
@@ -141,8 +142,31 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-background pb-20">
+        {/* Header Skeleton */}
+        <div className="bg-primary text-primary-foreground px-4 pt-12 pb-8 rounded-b-3xl">
+          <Skeleton className="h-4 w-24 bg-primary-foreground/20" />
+          <Skeleton className="h-8 w-40 mt-2 bg-primary-foreground/20" />
+        </div>
+
+        {/* Stats Grid Skeleton */}
+        <div className="px-4 -mt-4">
+          <div className="grid grid-cols-2 gap-3">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-2xl" />
+            ))}
+          </div>
+        </div>
+
+        {/* Charts Skeleton */}
+        <div className="px-4 mt-6 space-y-4">
+          <Skeleton className="h-16 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl" />
+        </div>
+        
+        <BottomNav />
       </div>
     );
   }

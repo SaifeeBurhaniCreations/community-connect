@@ -339,25 +339,29 @@ export const useAttendance = () => {
   }, []);
 
   const getMemberAttendanceStats = useCallback(async (memberId: string) => {
-    const { data: attendance, error: attendanceError } = await supabase
-      .from('attendance')
-      .select('is_present')
-      .eq('member_id', memberId);
+    // Get all occasions and member's attendance records
+    const [{ data: attendance, error: attendanceError }, { count: totalOccasions, error: countError }] = await Promise.all([
+      supabase
+        .from('attendance')
+        .select('is_present')
+        .eq('member_id', memberId),
+      supabase
+        .from('occasions')
+        .select('*', { count: 'exact', head: true })
+    ]);
     
     if (attendanceError) throw attendanceError;
-
-    const { count: totalOccasions, error: countError } = await supabase
-      .from('occasions')
-      .select('*', { count: 'exact', head: true });
-    
     if (countError) throw countError;
 
+    // Count only explicitly marked as present
     const attended = attendance?.filter(a => a.is_present).length || 0;
+    // Total is ALL occasions - if not marked present, they're absent
     const total = totalOccasions || 0;
     
     return {
       total,
       attended,
+      // Percentage based on total occasions, not just marked records
       percentage: total > 0 ? Math.round((attended / total) * 100) : 0,
     };
   }, []);
