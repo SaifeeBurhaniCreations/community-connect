@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { useOccasions, useAttendance, Occasion } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Calendar, MapPin, Clock, Music } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -55,8 +56,13 @@ export function OccasionsList() {
           </Button>
         }
       >
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-5 w-24" />
+          <div className="space-y-3">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-32 rounded-2xl" />
+            ))}
+          </div>
         </div>
       </Layout>
     );

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { useAnalytics } from '@/hooks/useDatabase';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   TrendingUp, 
   TrendingDown,
@@ -63,8 +64,45 @@ export function Analytics() {
   if (loading) {
     return (
       <Layout title="Analytics">
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="p-4 space-y-6">
+          {/* Attendance Trends Skeleton */}
+          <div className="card-elevated p-4">
+            <Skeleton className="h-5 w-40 mb-4" />
+            <Skeleton className="h-64 rounded-lg" />
+          </div>
+          
+          {/* Group Comparison Skeleton */}
+          <div className="card-elevated p-4">
+            <Skeleton className="h-5 w-40 mb-4" />
+            <Skeleton className="h-64 rounded-lg" />
+          </div>
+          
+          {/* Most Active Members Skeleton */}
+          <div className="card-elevated p-4">
+            <Skeleton className="h-5 w-40 mb-4" />
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="w-8 h-8 rounded-full" />
+                  <div className="flex-1">
+                    <Skeleton className="h-4 w-32 mb-1" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-6 w-12" />
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Needs Attention Skeleton */}
+          <div className="card-elevated p-4">
+            <Skeleton className="h-5 w-32 mb-4" />
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
+            </div>
+          </div>
         </div>
       </Layout>
     );

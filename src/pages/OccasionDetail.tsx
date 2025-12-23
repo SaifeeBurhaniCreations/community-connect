@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Layout } from '@/components/Layout';
 import { useOccasions, useGroups, useAttendance, Occasion, Group } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Edit, 
   Trash2, 
@@ -85,8 +86,20 @@ export function OccasionDetail() {
   if (loading) {
     return (
       <Layout title="Occasion Details" showBack onBack={() => navigate('/occasions')}>
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="p-4 space-y-6">
+          {/* Header Card Skeleton */}
+          <Skeleton className="h-48 rounded-2xl" />
+          
+          {/* Attendance Button Skeleton */}
+          <Skeleton className="h-14 rounded-xl" />
+          
+          {/* Kalam Section Skeleton */}
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-20 rounded-2xl" />
+            <Skeleton className="h-20 rounded-2xl" />
+            <Skeleton className="h-20 rounded-2xl" />
+          </div>
         </div>
       </Layout>
     );

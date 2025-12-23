@@ -6,6 +6,7 @@ import { Avatar } from '@/components/Avatar';
 import { useGroups, useGroupMembers, Group } from '@/hooks/useDatabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Users, FolderOpen, Search, ChevronRight } from 'lucide-react';
 
 export function GroupsList() {
@@ -63,8 +64,26 @@ export function GroupsList() {
           </Button>
         }
       >
-        <div className="flex items-center justify-center h-64">
-          <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="flex flex-col min-h-[calc(100vh-8rem)]">
+          {/* Stats Header Skeleton */}
+          <div className="px-4 pt-4 pb-2">
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="h-24 rounded-2xl" />
+              <Skeleton className="h-24 rounded-2xl" />
+            </div>
+          </div>
+
+          {/* Search Skeleton */}
+          <div className="px-4 py-3">
+            <Skeleton className="h-12 rounded-xl" />
+          </div>
+
+          {/* Groups List Skeleton */}
+          <div className="flex-1 px-4 space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-32 rounded-2xl" />
+            ))}
+          </div>
         </div>
       </Layout>
     );
